@@ -12,19 +12,18 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="company_handbook")
 
-question = "Công ty có bán xe hơi không?"
+question = "Cho tôi biết các thông tin liên quan về referral bonus?"
 question_vector = embed_text(question)
 
 results = collection.query(
     query_embeddings=[question_vector],
-    n_results=3
+    n_results=3,
+    include=["documents", "distances", "metadatas"]
 )
 
 for i, doc in enumerate(results["documents"][0]):
-    distance = results["distances"][0][i]
-    print(f"--- Chunk {i+1} (distance: {distance:.4f}) ---")
-    print(doc[:150])
-    print()
+    source = results["metadatas"][0][i]["source"]
+    print(f"[Nguồn: {source}] {doc[:100]}...")
 
 context = "\n\n".join(results["documents"][0])
 

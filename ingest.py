@@ -5,12 +5,13 @@ from dotenv import load_dotenv
 from gemini_client import client, embed_text
 import chromadb
 import hashlib
+import glob
 
 # Load environment variables from the .env file
-with pdfplumber.open("data/company_handbook_vn.pdf") as pdf:
-    full_text = ""
-    for page in pdf.pages:
-        full_text += page.extract_text() + "\n"
+# with pdfplumber.open("data/company_handbook_vn.pdf") as pdf:
+#     full_text = ""
+#     for page in pdf.pages:
+#         full_text += page.extract_text() + "\n"
 
 # print(full_text)
 
@@ -24,7 +25,7 @@ def chunk_text(text, chunk_size=800, overlap=100):
         start += chunk_size - overlap
     return chunks
 
-chunks = chunk_text(full_text)
+# chunks = chunk_text(full_text)
 # print(len(chunks))
 
 # Load environment variables and initialize the Gemini API client
@@ -48,15 +49,37 @@ def get_chunk_id(chunk_text):
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="company_handbook")
 
-for chunk in chunks:
-    chunk_id = get_chunk_id(chunk)
+# for chunk in chunks:
+#     chunk_id = get_chunk_id(chunk)
     
-    existing = collection.get(ids=[chunk_id])
-    if existing["ids"]:
-        print(f"Chunk {chunk_id[:8]} đã tồn tại, bỏ qua embed")
-        continue
+#     existing = collection.get(ids=[chunk_id])
+#     if existing["ids"]:
+#         print(f"Chunk {chunk_id[:8]} đã tồn tại, bỏ qua embed")
+#         continue
     
-    vector = embed_text(chunk)
-    collection.add(ids=[chunk_id], embeddings=[vector], documents=[chunk])
+#     vector = embed_text(chunk)
+#     collection.add(ids=[chunk_id], embeddings=[vector], documents=[chunk])
+
+pdf_files = glob.glob("data/*.pdf")
+for pdf_path in pdf_files:
+    with pdfplumber.open(pdf_path) as pdf:
+        full_text = ""
+        for page in pdf.pages:
+            full_text += page.extract_text() + "\n"
+    
+    chunks = chunk_text(full_text)
+    
+    for chunk in chunks:
+        chunk_id = get_chunk_id(chunk)
+        existing = collection.get(ids=[chunk_id])
+        if existing["ids"]:
+            continue
+        vector = embed_text(chunk)
+        collection.add(
+            ids=[chunk_id],
+            embeddings=[vector],
+            documents=[chunk],
+            metadatas=[{"source": pdf_path}]
+        )
 
 print(f"Tổng số chunk trong collection: {collection.count()}")
