@@ -6,6 +6,7 @@ from gemini_client import client, embed_text
 import chromadb
 import hashlib
 import glob
+from ocr_utils import extract_text_with_ocr
 
 # Load environment variables from the .env file
 # with pdfplumber.open("data/company_handbook_vn.pdf") as pdf:
@@ -66,6 +67,9 @@ for pdf_path in pdf_files:
         full_text = ""
         for page in pdf.pages:
             full_text += page.extract_text() + "\n"
+        if not full_text.strip():
+            print(f"{pdf_path}: không có text layer, chuyển sang OCR...")
+            full_text = extract_text_with_ocr(pdf_path)
     
     chunks = chunk_text(full_text)
     
