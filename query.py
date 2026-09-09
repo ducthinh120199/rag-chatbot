@@ -1,18 +1,23 @@
-from google import genai
-import os
-from dotenv import load_dotenv
 import chromadb
 from gemini_client import client, embed_text
-import logging
-logging.getLogger("google_genai").setLevel(logging.ERROR)
-
-load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+from rank_bm25 import BM25Okapi
+from chunk_utils import get_chunk_id
 
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="company_handbook")
 
-question = "Nhân viên nam được nghỉ bao nhiêu ngày khi vợ sinh con?"
+question = "Referral Bonus là gì?"
+
+# --- Chuẩn bị dữ liệu cho BM25 (cần toàn bộ chunk, không phải top-k) ---
+all_data = collection.get(include=["documents", "metadatas"])
+all_chunks = all_data["documents"]
+all_sources = all_data["metadatas"]
+all_ids = all_data["ids"]
+
+tokenized_chunks = [chunk.lower().split() for chunk in all_chunks]
+bm25 = BM25Okapi(tokenized_chunks)
+
+# --- Dense search (đã có từ trước) ---
 question_vector = embed_text(question)
 
 results = collection.query(
@@ -21,11 +26,52 @@ results = collection.query(
     include=["documents", "distances", "metadatas"]
 )
 
+print("--- Dense search (theo ý nghĩa) ---")
 for i, doc in enumerate(results["documents"][0]):
     source = results["metadatas"][0][i]["source"]
-    # print(f"[Nguồn: {source}] {doc[:100]}...")
+    distance = results["distances"][0][i]
+    print(f"[{source}] (distance: {distance:.4f}) {doc[:80]}...")
 
-context = "\n\n".join(results["documents"][0])
+# --- Sparse search / BM25 (mới thêm) ---
+tokenized_question = question.lower().split()
+bm25_scores = bm25.get_scores(tokenized_question)
+
+bm25_ranking = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:3]
+
+print("\n--- Sparse search / BM25 (theo từ khóa) ---")
+for rank, idx in enumerate(bm25_ranking):
+    source = all_sources[idx]["source"]
+    print(f"[{source}] (score: {bm25_scores[idx]:.2f}) {all_chunks[idx][:80]}...")
+
+def reciprocal_rank_fusion(dense_ids, sparse_ids, k=60):
+    scores = {}
+    
+    for rank, doc_id in enumerate(dense_ids):
+        scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank + 1)
+    
+    for rank, doc_id in enumerate(sparse_ids):
+        scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank + 1)
+    
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return ranked
+
+#--- Reciprocal Rank Fusion (RRF) ---
+dense_ids = [get_chunk_id(doc) for doc in results["documents"][0]]
+sparse_ids = [get_chunk_id(all_chunks[idx]) for idx in bm25_ranking]
+
+fused = reciprocal_rank_fusion(dense_ids, sparse_ids)
+print("\n--- Kết quả sau RRF ---")
+for doc_id, score in fused[:3]:
+    print(f"{doc_id[:8]} (RRF score: {score:.4f})")
+
+def get_text_by_id(chunk_id, all_chunks, all_ids):
+    idx = all_ids.index(chunk_id)
+    return all_chunks[idx]
+
+top_chunk_ids = [doc_id for doc_id, score in fused[:3]]
+final_chunks = [get_text_by_id(cid, all_chunks, all_ids) for cid in top_chunk_ids]
+
+context = "\n\n".join(final_chunks)
 
 prompt = f"""Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu công ty.
 Chỉ trả lời dựa trên nội dung trong phần CONTEXT dưới đây.
@@ -43,4 +89,4 @@ response = client.models.generate_content(
     contents=prompt
 )
 
-print(response.text)
+print(f"\n--- Câu trả lời ---\n{response.text}")

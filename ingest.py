@@ -7,6 +7,7 @@ import chromadb
 import hashlib
 import glob
 from ocr_utils import extract_text_with_ocr
+from chunk_utils import get_chunk_id
 
 # Load environment variables from the .env file
 # with pdfplumber.open("data/company_handbook_vn.pdf") as pdf:
@@ -41,10 +42,6 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 #     return result.embeddings[0].values
 
 # embeddings = [embed_text(chunk) for chunk in chunks]
-
-# Function to generate a unique ID for each text chunk using SHA-256 hash
-def get_chunk_id(chunk_text):
-    return hashlib.sha256(chunk_text.encode()).hexdigest()
 
 # Store the embeddings and corresponding text chunks in a persistent ChromaDB collection
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
