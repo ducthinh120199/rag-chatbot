@@ -2,6 +2,7 @@ import chromadb
 from gemini_client import client, embed_text
 from rank_bm25 import BM25Okapi
 from chunk_utils import get_chunk_id
+from sentence_transformers import CrossEncoder
 
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="company_handbook")
@@ -22,7 +23,7 @@ question_vector = embed_text(question)
 
 results = collection.query(
     query_embeddings=[question_vector],
-    n_results=3,
+    n_results=15,
     include=["documents", "distances", "metadatas"]
 )
 
@@ -36,7 +37,7 @@ for i, doc in enumerate(results["documents"][0]):
 tokenized_question = question.lower().split()
 bm25_scores = bm25.get_scores(tokenized_question)
 
-bm25_ranking = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:3]
+bm25_ranking = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:15]
 
 print("\n--- Sparse search / BM25 (theo từ khóa) ---")
 for rank, idx in enumerate(bm25_ranking):
@@ -68,9 +69,20 @@ def get_text_by_id(chunk_id, all_chunks, all_ids):
     idx = all_ids.index(chunk_id)
     return all_chunks[idx]
 
-top_chunk_ids = [doc_id for doc_id, score in fused[:3]]
-final_chunks = [get_text_by_id(cid, all_chunks, all_ids) for cid in top_chunk_ids]
+candidate_ids = [doc_id for doc_id, score in fused[:15]]
+candidate_chunks = [get_text_by_id(cid, all_chunks, all_ids) for cid in candidate_ids]
 
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+pairs = [(question, chunk) for chunk in candidate_chunks]
+rerank_scores = reranker.predict(pairs)
+
+reranked = sorted(zip(candidate_chunks, rerank_scores), key=lambda x: x[1], reverse=True)
+
+print("\n--- Kết quả sau Reranking ---")
+for chunk, score in reranked[:3]:
+    print(f"(score: {score:.4f}) {chunk[:80]}...")
+
+final_chunks = [chunk for chunk, score in reranked[:3]]
 context = "\n\n".join(final_chunks)
 
 prompt = f"""Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu công ty.
