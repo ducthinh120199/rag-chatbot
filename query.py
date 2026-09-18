@@ -5,6 +5,9 @@ from chunk_utils import get_chunk_id
 from sentence_transformers import CrossEncoder
 import time
 import ollama
+import requests
+
+K8S_OLLAMA_URL = "http://127.0.0.1:60745"
 
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="company_handbook")
@@ -119,3 +122,20 @@ t4 = time.time()
 mistral_response = ollama.chat(model="mistral", messages=[{"role": "user", "content": prompt}])
 t5 = time.time()
 print(f"\n--- Ollama Mistral ({t5-t4:.2f}s) ---\n{mistral_response['message']['content']}")
+
+#--
+def call_ollama_k8s(prompt):
+    response = requests.post(
+        f"{K8S_OLLAMA_URL}/api/chat",
+        json={
+            "model": "llama3.2",
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False
+        }
+    )
+    return response.json()["message"]["content"]
+
+t8 = time.time()
+k8s_answer = call_ollama_k8s(prompt)
+t9 = time.time()
+print(f"\n--- Ollama qua K8s ({t9-t8:.2f}s) ---\n{k8s_answer}")
