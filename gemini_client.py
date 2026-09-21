@@ -30,3 +30,20 @@ def embed_text(text, max_retries=3):
             wait_time = 2 ** attempt
             print(f"Lỗi tạm thời ({e.code} {e.status}), thử lại sau {wait_time}s...")
             time.sleep(wait_time)
+
+def embed_batch(texts, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            result = client.models.embed_content(
+                model=EMBED_MODEL,
+                contents=texts  # truyền cả list, không phải 1 string
+            )
+            return [e.values for e in result.embeddings]
+        except genai_errors.ClientError as e:
+            if e.code not in RETRYABLE_STATUS_CODES:
+                raise
+            if attempt == max_retries - 1:
+                raise
+            wait_time = 2 ** attempt
+            print(f"Lỗi tạm thời ({e.code}), thử lại sau {wait_time}s...")
+            time.sleep(wait_time)
