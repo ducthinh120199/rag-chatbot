@@ -5,6 +5,7 @@ import re
 import requests
 import os
 from dotenv import load_dotenv
+from gemini_client import client
 
 load_dotenv()
 
@@ -62,6 +63,11 @@ def generate_sql_with_ollama(question):
     response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
     return response["message"]["content"].strip()
 
+def generate_sql_with_gemini(question):
+    prompt = f"Schema database:\n{SCHEMA_INFO}\n\nViết câu SQL SELECT để trả lời câu hỏi sau: {question}"
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    return response.text.strip()
+
 def is_sql_safe(sql_query):
     normalized = sql_query.strip().lower()
     normalized_no_trailing_semicolon = normalized.rstrip(";").strip()
@@ -106,7 +112,7 @@ def agentic_answer(question):
     if tool_choice == "semantic_search":
         tool_result = semantic_search(question)
     elif tool_choice == "run_sql_query":
-        sql_query = generate_sql_with_ollama(question)
+        sql_query = generate_sql_with_gemini(question)
         print(f"[SQL sinh ra]: {sql_query}")
         tool_result = run_sql_query(sql_query)
         print(f"[Kết quả tool trả về]:\n{tool_result}\n")
@@ -122,8 +128,8 @@ def agentic_answer(question):
         {tool_result}
         Hãy trả lời câu hỏi dựa trên dữ liệu trên."""
 
-    final_response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": final_prompt}])
-    return final_response["message"]["content"]
+    final_response = client.models.generate_content(model="gemini-2.5-flash", contents=final_prompt)
+    return final_response.text
 
 
 if __name__ == "__main__":

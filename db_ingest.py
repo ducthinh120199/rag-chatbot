@@ -5,7 +5,11 @@ from gemini_client import embed_batch
 import chromadb
 import time
 import ollama
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 LAST_SYNC_FILE = "last_sync.txt"
 PIPELINE_VERSION = "v1_track_album_join"
 BATCH_SIZE = 20
@@ -24,7 +28,7 @@ def save_sync_time(timestamp):
 def embed_batch_local(texts):
     return [ollama.embed(model="nomic-embed-text", input=t)["embeddings"][0] for t in texts]
 
-conn = psycopg2.connect(host="localhost", port=5432, dbname="chinook", user="postgres", password="pass")
+conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
 last_sync = get_last_sync_time()
@@ -60,7 +64,7 @@ def process_batch(batch_rows):
     if not texts:
         return
 
-    vectors = embed_batch_local(texts)
+    vectors = embed_batch(texts)
 
     for (track_id, text, unit_price, milliseconds, album_title, genre_name), vector in zip(valid_rows, vectors):
         collection.upsert(
@@ -78,6 +82,7 @@ def process_batch(batch_rows):
 for i in range(0, len(rows), BATCH_SIZE):
     batch = rows[i:i + BATCH_SIZE]
     process_batch(batch)
+    time.sleep(15)
 
 save_sync_time(sync_start_time)
 cursor.close()
