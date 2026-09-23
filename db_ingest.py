@@ -6,6 +6,7 @@ import chromadb
 import time
 import ollama
 import os
+from pgvector.psycopg2 import register_vector
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -66,18 +67,31 @@ def process_batch(batch_rows):
 
     vectors = embed_batch(texts)
 
-    for (track_id, text, unit_price, milliseconds, album_title, genre_name), vector in zip(valid_rows, vectors):
-        collection.upsert(
-            ids=[f"track_{track_id}"],
-            embeddings=[vector],
-            documents=[text],
-            metadatas=[{
-                "track_id": track_id, "album_title": album_title or "",
-                "genre_name": genre_name or "", "unit_price": float(unit_price),
-                "milliseconds": milliseconds, "pipeline_version": PIPELINE_VERSION
-            }]
+    conn = psycopg2.connect(DATABASE_URL)
+    register_vector(conn)
+    cursor = conn.cursor()
+    for track_id, vector in zip(valid_track_ids, vectors):
+        cursor.execute(
+            "UPDATE track SET embedding = %s WHERE track_id = %s",
+            (vector, track_id)
         )
-    print(f"Đã xử lý batch {len(valid_rows)} dòng")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print(f"Đã cập nhật embedding cho {len(valid_track_ids)} dòng")
+
+    # for (track_id, text, unit_price, milliseconds, album_title, genre_name), vector in zip(valid_rows, vectors):
+    #     collection.upsert(
+    #         ids=[f"track_{track_id}"],
+    #         embeddings=[vector],
+    #         documents=[text],
+    #         metadatas=[{
+    #             "track_id": track_id, "album_title": album_title or "",
+    #             "genre_name": genre_name or "", "unit_price": float(unit_price),
+    #             "milliseconds": milliseconds, "pipeline_version": PIPELINE_VERSION
+    #         }]
+    #     )
+    # print(f"Đã xử lý batch {len(valid_rows)} dòng")
 
 for i in range(0, len(rows), BATCH_SIZE):
     batch = rows[i:i + BATCH_SIZE]
