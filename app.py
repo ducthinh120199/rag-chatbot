@@ -3,7 +3,7 @@ from agentic_query import agentic_answer
 
 st.set_page_config(page_title="Chinook Music Assistant", page_icon="🎵")
 st.title("🎵 Chinook Music Assistant")
-st.caption("Agentic RAG: Jev chọn tool (semantic search / SQL), Ollama sinh câu trả lời")
+st.caption("Agentic RAG: Jev chọn tool (semantic search / SQL), Gemini sinh câu trả lời, pgvector trên Supabase")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
